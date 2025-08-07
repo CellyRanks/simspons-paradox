@@ -3,7 +3,6 @@ title: "Different Perspectives, Different Results"
 format: 
   html:
     theme: none
-    css: styles.css
 output-dir: docs
 ---
 
