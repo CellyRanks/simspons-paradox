@@ -1,0 +1,494 @@
+---
+title: "Different Perspectives, Different Results"
+format: 
+  html:
+    theme: none
+    css: styles.css
+---
+
+```{=html}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700&family=Instrument+Serif:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<style>
+body, * {
+  font-family: 'Urbanist', sans-serif !important;
+}
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Instrument Serif', serif !important;
+}
+</style>
+```
+
+```{ojs}
+//| echo: false
+
+// Generate synthetic data demonstrating Simpson's Paradox
+data = {
+  const n1 = 100, n2 = 100, n3 = 100; // Points per group 
+  
+  // Group 1: Positive correlation (r ≈ +0.75)
+  const group1 = d3.range(n1).map(i => {
+    const x = d3.randomNormal(30, 8)();
+    const y = 0.9 * x + d3.randomNormal(0, 6)() + 15;
+    return {x: Math.max(10, Math.min(50, x)), y: Math.max(10, Math.min(90, y)), group: 'Community A'};
+  });
+  
+  // Group 2: Negative correlation (r ≈ -0.75)
+  const group2 = d3.range(n2).map(i => {
+    const x = d3.randomNormal(55, 8)();
+    const y = -0.8 * x + d3.randomNormal(0, 6)() + 95;
+    return {x: Math.max(40, Math.min(80, x)), y: Math.max(20, Math.min(80, y)), group: 'Community B'};
+  });
+  
+  // Group 3: Zero correlation (r ≈ 0)
+  const group3 = d3.range(n3).map(i => {
+    const x = d3.randomNormal(65, 10)();
+    const y = d3.randomNormal(55, 12)();
+    return {x: Math.max(50, Math.min(90, x)), y: Math.max(30, Math.min(80, y)), group: 'Community C'};
+  });
+  
+  // Combine all groups
+  let allData = [...group1, ...group2, ...group3];
+  
+  // Adjust to ensure exactly zero overall correlation
+  const xMean = d3.mean(allData, d => d.x);
+  const yMean = d3.mean(allData, d => d.y);
+  
+  // Calculate current correlation
+  const numerator = d3.sum(allData, d => (d.x - xMean) * (d.y - yMean));
+  const denomXX = d3.sum(allData, d => (d.x - xMean) ** 2);
+  const denomYY = d3.sum(allData, d => (d.y - yMean) ** 2);
+  const currentCorr = numerator / Math.sqrt(denomXX * denomYY);
+  
+  // Adjust y values to make correlation exactly 0
+  const adjustment = currentCorr * Math.sqrt(denomYY / denomXX);
+  allData.forEach(d => {
+    d.y = d.y - adjustment * (d.x - xMean);
+  });
+  
+  return allData;
+}
+```
+
+```{ojs}
+//| echo: false
+
+// Calculate regression lines and correlations
+regressionLines = {
+  const groups = d3.group(data, d => d.group);
+  const lines = {};
+  
+  // Overall regression
+  const xMean = d3.mean(data, d => d.x);
+  const yMean = d3.mean(data, d => d.y);
+  const numerator = d3.sum(data, d => (d.x - xMean) * (d.y - yMean));
+  const denominator = d3.sum(data, d => (d.x - xMean) ** 2);
+  const overallSlope = numerator / denominator;
+  const overallIntercept = yMean - overallSlope * xMean;
+  
+  lines.overall = {slope: overallSlope, intercept: overallIntercept};
+  
+  // Group regressions with correlation coefficients
+  for (const [groupName, groupData] of groups) {
+    const xMean = d3.mean(groupData, d => d.x);
+    const yMean = d3.mean(groupData, d => d.y);
+    const numerator = d3.sum(groupData, d => (d.x - xMean) * (d.y - yMean));
+    const denominator = d3.sum(groupData, d => (d.x - xMean) ** 2);
+    const slope = numerator / denominator;
+    const intercept = yMean - slope * xMean;
+    
+    // Calculate correlation coefficient
+    const denomXX = d3.sum(groupData, d => (d.x - xMean) ** 2);
+    const denomYY = d3.sum(groupData, d => (d.y - yMean) ** 2);
+    const correlation = numerator / Math.sqrt(denomXX * denomYY);
+    
+    lines[groupName] = {slope, intercept, correlation};
+  }
+  
+  return lines;
+}
+```
+
+```{ojs}
+//| echo: false
+
+// Create the animated visualization with replay and methodology features
+{
+  const width = 800;
+  const height = 500;
+  const margin = {top: 40, right: 40, bottom: 60, left: 60};
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+  
+  // Animation state management
+  let isAnimating = false;
+  let animationContainer;
+  
+  // Scales
+  const xScale = d3.scaleLinear()
+    .domain(d3.extent(data, d => d.x))
+    .range([0, innerWidth]);
+    
+  const yScale = d3.scaleLinear()
+    .domain(d3.extent(data, d => d.y))
+    .range([innerHeight, 0]);
+  
+  // Color scale
+  const colorScale = d3.scaleOrdinal()
+    .domain(['Community A', 'Community B', 'Community C'])
+    .range(['#2E8B57', '#DC143C', '#4682B4']); // Sea green, crimson, steel blue
+  
+  // Create main container
+  const container = d3.create("div")
+    .style("position", "relative")
+    .style("display", "inline-block")
+    .style("overflow", "hidden"); // Ensure panel slides within bounds
+  
+  // Create SVG
+  const svg = container.append("svg")
+    .attr("width", width)
+    .attr("height", height)
+    .style("background", "#fafafa")
+    .style("border-radius", "8px")
+    .style("box-shadow", "0 2px 10px rgba(0,0,0,0.1)");
+  
+  const g = svg.append("g")
+    .attr("transform", `translate(${margin.left},${margin.top})`);
+  
+  // Add axes
+  const xAxis = g.append("g")
+    .attr("class", "x-axis")
+    .attr("transform", `translate(0,${innerHeight})`)
+    .call(d3.axisBottom(xScale).tickFormat(d => ""));
+    
+  const yAxis = g.append("g")
+    .attr("class", "y-axis")
+    .call(d3.axisLeft(yScale).tickFormat(d => ""));
+  
+  // Add axis labels
+  g.append("text")
+    .attr("class", "axis-label")
+    .attr("x", innerWidth / 2)
+    .attr("y", innerHeight + 45)
+    .style("text-anchor", "middle")
+    .style("font-size", "14px")
+    .style("fill", "#666")
+    .text("Intervention");
+    
+  g.append("text")
+    .attr("class", "axis-label")
+    .attr("transform", "rotate(-90)")
+    .attr("x", -innerHeight / 2)
+    .attr("y", -40)
+    .style("text-anchor", "middle")
+    .style("font-size", "14px")
+    .style("fill", "#666")
+    .text("Community Outcome Measure");
+  
+  // Add subtle grid
+  g.append("g")
+    .attr("class", "grid")
+    .selectAll("line")
+    .data(xScale.ticks(8))
+    .enter()
+    .append("line")
+    .attr("x1", d => xScale(d))
+    .attr("x2", d => xScale(d))
+    .attr("y1", 0)
+    .attr("y2", innerHeight)
+    .style("stroke", "#e0e0e0")
+    .style("stroke-width", 0.5);
+    
+  g.append("g")
+    .attr("class", "grid")
+    .selectAll("line")
+    .data(yScale.ticks(6))
+    .enter()
+    .append("line")
+    .attr("x1", 0)
+    .attr("x2", innerWidth)
+    .attr("y1", d => yScale(d))
+    .attr("y2", d => yScale(d))
+    .style("stroke", "#e0e0e0")
+    .style("stroke-width", 0.5);
+  
+  // Animation sequence
+  async function animate() {
+    if (isAnimating) return;
+    isAnimating = true;
+    
+    // Hide buttons during animation
+    container.selectAll(".control-button").style("opacity", 0);
+    
+    // Clear any existing elements
+    g.selectAll(".data-point, .overall-line, .group-line").remove();
+    // Phase 1: Show points (0-1.5s)
+    const circles = g.selectAll(".data-point")
+      .data(data)
+      .enter()
+      .append("circle")
+      .attr("class", "data-point")
+      .attr("cx", d => xScale(d.x))
+      .attr("cy", d => yScale(d.y))
+      .attr("r", 0)
+      .style("fill", "#999")
+      .style("opacity", 0.7);
+    
+    await circles.transition()
+      .duration(1500)
+      .attr("r", 4)
+      .end();
+    
+    // Phase 2: Show overall regression line (1.5-3s)
+    const overallLine = g.append("line")
+      .attr("class", "overall-line")
+      .attr("x1", xScale(d3.min(data, d => d.x)))
+      .attr("y1", yScale(regressionLines.overall.slope * d3.min(data, d => d.x) + regressionLines.overall.intercept))
+      .attr("x2", xScale(d3.min(data, d => d.x)))
+      .attr("y2", yScale(regressionLines.overall.slope * d3.min(data, d => d.x) + regressionLines.overall.intercept))
+      .style("stroke", "#333")
+      .style("stroke-width", 3)
+      .style("opacity", 0.8);
+    
+    await overallLine.transition()
+      .duration(1500)
+      .attr("x2", xScale(d3.max(data, d => d.x)))
+      .attr("y2", yScale(regressionLines.overall.slope * d3.max(data, d => d.x) + regressionLines.overall.intercept))
+      .end();
+    
+    // Phase 3: Show colors (3-4.5s)
+    await circles.transition()
+      .duration(1500)
+      .style("fill", d => colorScale(d.group))
+      .attr("r", 5)
+      .end();
+    
+    // Phase 4: Fade overall line and show group lines (4.5-6s)
+    const fadeOverall = overallLine.transition()
+      .duration(1500)
+      .style("opacity", 0);
+    
+    // Add group regression lines
+    const groupLines = g.selectAll(".group-line")
+      .data(['Community A', 'Community B', 'Community C'])
+      .enter()
+      .append("line")
+      .attr("class", "group-line")
+      .attr("x1", d => {
+        const groupData = data.filter(point => point.group === d);
+        return xScale(d3.min(groupData, point => point.x));
+      })
+      .attr("y1", d => {
+        const groupData = data.filter(point => point.group === d);
+        const minX = d3.min(groupData, point => point.x);
+        return yScale(regressionLines[d].slope * minX + regressionLines[d].intercept);
+      })
+      .attr("x2", d => {
+        const groupData = data.filter(point => point.group === d);
+        return xScale(d3.min(groupData, point => point.x));
+      })
+      .attr("y2", d => {
+        const groupData = data.filter(point => point.group === d);
+        const minX = d3.min(groupData, point => point.x);
+        return yScale(regressionLines[d].slope * minX + regressionLines[d].intercept);
+      })
+      .style("stroke", d => colorScale(d))
+      .style("stroke-width", 3)
+      .style("opacity", 0);
+    
+    await groupLines.transition()
+      .duration(1500)
+      .attr("x2", d => {
+        const groupData = data.filter(point => point.group === d);
+        return xScale(d3.max(groupData, point => point.x));
+      })
+      .attr("y2", d => {
+        const groupData = data.filter(point => point.group === d);
+        const maxX = d3.max(groupData, point => point.x);
+        return yScale(regressionLines[d].slope * maxX + regressionLines[d].intercept);
+      })
+      .style("opacity", 0.9)
+      .end();
+    
+    // Phase 5: Hold final state and show controls (6-7.5s)
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    isAnimating = false;
+    createButtons();
+  }
+  
+  // Create control buttons
+  function createButtons() {
+    // Remove existing buttons
+    container.selectAll(".control-button").remove();
+    
+    // Replay button
+    const replayBtn = container.append("div")
+      .attr("class", "control-button replay-btn")
+      .style("position", "absolute")
+      .style("top", "10px")
+      .style("right", "10px")
+      .style("background", "#fff")
+      .style("border", "2px solid #2c365e")
+      .style("border-radius", "6px")
+      .style("padding", "8px 12px")
+      .style("cursor", "pointer")
+      .style("font-size", "14px")
+      .style("color", "#2c365e")
+      .style("box-shadow", "0 2px 4px rgba(0,0,0,0.1)")
+      .style("transition", "all 0.2s ease")
+      .style("opacity", 0)
+      .text("↻ Replay")
+      .on("mouseover", function() {
+        d3.select(this).style("background", "#f8f9fa").style("transform", "translateY(-1px)");
+      })
+      .on("mouseout", function() {
+        d3.select(this).style("background", "#fff").style("transform", "translateY(0)");
+      })
+      .on("click", animate);
+    
+    // Methodology button
+    const methodBtn = container.append("div")
+      .attr("class", "control-button method-btn")
+      .style("position", "absolute")
+      .style("top", "10px")
+      .style("right", "100px")
+      .style("background", "#2c365e")
+      .style("border", "2px solid #2c365e")
+      .style("border-radius", "6px")
+      .style("padding", "8px 12px")
+      .style("cursor", "pointer")
+      .style("font-size", "14px")
+      .style("color", "#fff")
+      .style("box-shadow", "0 2px 4px rgba(0,0,0,0.1)")
+      .style("transition", "all 0.2s ease")
+      .style("opacity", 0)
+      .text("Show the Method")
+      .on("mouseover", function() {
+        d3.select(this).style("background", "#1a2332").style("transform", "translateY(-1px)");
+      })
+      .on("mouseout", function() {
+        d3.select(this).style("background", "#2c365e").style("transform", "translateY(0)");
+      })
+      .on("click", showMethodology);
+    
+    // Fade in buttons
+    container.selectAll(".control-button")
+      .transition()
+      .duration(300)
+      .style("opacity", 1);
+  }
+  
+  // Generate dynamic impact descriptions based on correlation
+  function getImpactDescription(correlation) {
+    const absCorr = Math.abs(correlation);
+    if (correlation > 0.6) return "Strong positive impact";
+    if (correlation > 0.3) return "Moderate positive impact";
+    if (correlation > 0.1) return "Weak positive impact";
+    if (correlation < -0.6) return "Strong negative impact";
+    if (correlation < -0.3) return "Moderate negative impact";
+    if (correlation < -0.1) return "Weak negative impact";
+    return "No measurable effect";
+  }
+
+  // Show methodology slide-over panel
+  function showMethodology() {
+    // Dim the background plot
+    svg.transition()
+      .duration(300)
+      .style("opacity", 0.3)
+      .style("filter", "blur(2px)");
+    
+    // Create slide-over panel
+    const panel = container.append("div")
+      .attr("class", "methodology-panel")
+      .style("position", "absolute")
+      .style("top", "0")
+      .style("right", "0")
+      .style("width", "650px")
+      .style("height", height + "px")
+      .style("background", "rgba(255,255,255,0.95)")
+      .style("backdrop-filter", "blur(10px)")
+      .style("box-shadow", "-5px 0 20px rgba(0,0,0,0.1)")
+      .style("border-radius", "8px 0 0 8px")
+      .style("transform", "translateX(100%)")
+      .style("transition", "transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)")
+      .style("overflow-y", "auto")
+      .style("z-index", "100");
+    
+    // Get dynamic descriptions for each community
+    const communityADescription = getImpactDescription(regressionLines['Community A'].correlation);
+    const communityBDescription = getImpactDescription(regressionLines['Community B'].correlation);
+    const communityCDescription = getImpactDescription(regressionLines['Community C'].correlation);
+
+    // Panel content with dynamic descriptions
+    panel.html(`
+      <div style="padding: 25px; position: relative; height: 100%; box-sizing: border-box;">
+        <button class="close-btn" style="position: absolute; top: 15px; right: 15px; background: #dc3545; color: white; border: none; border-radius: 50%; width: 28px; height: 28px; cursor: pointer; font-size: 14px; z-index: 10;">×</button>
+        
+        <h3 style="color: #2c365e; margin-bottom: 15px; font-size: 20px; margin-top: 5px;">The Method Behind the Story</h3>
+        
+        <div style="margin-bottom: 18px;">
+          <h4 style="color: #2c365e; font-size: 16px; margin-bottom: 8px; font-weight: 600;">What You Just Saw</h4>
+          <p style="margin-bottom: 12px; line-height: 1.5; font-size: 14px;">This is <strong>Simpson's Paradox</strong> - trends in groups become invisible when data is aggregated:</p>
+          <ul style="margin-bottom: 0; line-height: 1.6; font-size: 14px; padding-left: 16px;">
+            <li><span style="color: #2E8B57; font-weight: 600;">Community A</span>: ${communityADescription}</li>
+            <li><span style="color: #DC143C; font-weight: 600;">Community B</span>: ${communityBDescription}</li>
+            <li><span style="color: #4682B4; font-weight: 600;">Community C</span>: ${communityCDescription}</li>
+          </ul>
+        </div>
+        
+        <div style="margin-bottom: 18px;">
+          <h4 style="color: #2c365e; font-size: 16px; margin-bottom: 8px; font-weight: 600;">Why This Matters</h4>
+          <p style="margin-bottom: 0; line-height: 1.5; font-size: 14px;">Without Lived Experience we can easily come to the wrong conclusions. But <strong>communities know their contexts best</strong>. Community-guided interpretation reveals what data alone cannot.</p>
+        </div>
+        
+        <div style="margin-bottom: 25px;">
+          <h4 style="color: #2c365e; font-size: 16px; margin-bottom: 8px; font-weight: 600;">The Just Knowledge Approach</h4>
+          <p style="margin-bottom: 0; line-height: 1.5; font-size: 14px;">We work with communities to generate and analyse data. This <strong>collective sense-making</strong> ensures those most affected by an issue also lead their solutions.</p>
+        </div>
+        
+        <div style="text-align: right; position: absolute; bottom: 25px; left: 25px; right: 25px;">
+          <a href="#what-we-do" style="background: #2c365e; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none; font-weight: 600; font-size: 13px; display: inline-block;">Learn About Our Approach</a>
+        </div>
+      </div>
+    `);
+    
+    // Close functionality
+    panel.select(".close-btn").on("click", function() {
+      hideMethodology();
+    });
+    
+    // Slide in the panel with a smoother delay
+    setTimeout(() => {
+      panel.style("transform", "translateX(0)");
+    }, 100);
+  }
+  
+  // Hide methodology panel
+  function hideMethodology() {
+    const panel = container.select(".methodology-panel");
+    if (panel.empty()) return;
+    
+    // Slide out the panel
+    panel.style("transform", "translateX(100%)");
+    
+    // Restore plot appearance
+    svg.transition()
+      .duration(300)
+      .style("opacity", 1)
+      .style("filter", "none");
+    
+    // Remove panel after animation
+    setTimeout(() => {
+      panel.remove();
+    }, 600);
+  }
+  
+  // Start initial animation
+  animate();
+  
+  return container.node();
+}
+```
