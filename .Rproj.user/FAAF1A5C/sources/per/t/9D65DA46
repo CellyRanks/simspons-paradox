@@ -1,0 +1,32 @@
+{
+    "id": "9D65DA46",
+    "path": "~/repos/testing simpsons/simpsons.qmd",
+    "project_path": "simpsons.qmd",
+    "type": "quarto_markdown",
+    "hash": "926069174",
+    "contents": "",
+    "dirty": false,
+    "created": 1754247034780.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "rmdVisualMode": "false",
+        "rmdVisualWrapConfigured": "true",
+        "tempName": "Untitled1",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "7,0",
+        "scrollLine": "0",
+        "docOutlineVisible": "1",
+        "rmdVisualCollapsedChunks": "",
+        "rmdVisualModeLocation": "1102:247"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1754294408,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1754294408,
+    "read_only": false,
+    "read_only_alternatives": []
+}
