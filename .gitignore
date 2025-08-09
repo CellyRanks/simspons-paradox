@@ -2,8 +2,3 @@
 .Rproj.user/
 .Rhistory
 *.Rproj
-
-# Quarto files (keep only docs/ folder)
-*.html
-*_files/
-!docs/
